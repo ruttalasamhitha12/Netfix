@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NetFix | Explainable Connectivity Diagnosis</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef1f5;--surface:#fff;--ink:#0e1b33;--mute:#5a6780;--line:#d5dce6;--accent:#12306b;--accent-ink:#fff;--ok:#0b7a64;--okbg:#dcf3ec;--warn:#9a5b00;--warnbg:#fdeccb;--bad:#b4231f;--badbg:#fbdedc;--idle:#8b96a9;--idlebg:#e4e8ef;
+--sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0a1222;--surface:#111c33;--ink:#e8edf7;--mute:#98a5bd;--line:#243456;--accent:#7fa6ff;--accent-ink:#08142e;--ok:#4fd1b0;--okbg:#0f3a33;--warn:#f2b35a;--warnbg:#3d2c0c;--bad:#ff8a83;--badbg:#44171a;--idle:#7d8aa3;--idlebg:#1a2745}}
+:root[data-theme="dark"]{--bg:#0a1222;--surface:#111c33;--ink:#e8edf7;--mute:#98a5bd;--line:#243456;--accent:#7fa6ff;--accent-ink:#08142e;--ok:#4fd1b0;--okbg:#0f3a33;--warn:#f2b35a;--warnbg:#3d2c0c;--bad:#ff8a83;--badbg:#44171a;--idle:#7d8aa3;--idlebg:#1a2745}
+html{scroll-padding-top:env(safe-area-inset-top,0px);color-scheme:light dark}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:0 22px}
+header.top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:22px 0;border-bottom:1px solid var(--line)}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px;letter-spacing:-.02em}
+.logo svg{width:30px;height:30px}
+.tag{font:500 12.5px var(--mono);color:var(--mute);border:1px solid var(--line);padding:5px 11px;border-radius:4px;background:var(--surface)}
+.hero{padding:56px 0 40px}
+h1{font-size:clamp(34px,6.2vw,60px);line-height:1.05;letter-spacing:-.035em;margin:0 0 18px;max-width:16ch;font-weight:700}
+.lead{font-size:18px;color:var(--mute);max-width:56ch;margin:0 0 28px}
+.cta{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+button{font:600 15px var(--sans);cursor:pointer;border-radius:6px;padding:12px 20px;border:1px solid transparent;min-height:44px}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.btn{background:var(--accent);color:var(--accent-ink)}
+.btn:hover{filter:brightness(1.12)}
+.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.ghost:hover{background:var(--surface)}
+.note{font-size:13.5px;color:var(--mute)}
+
+/* signal path */
+.path{margin:44px 0 0;padding:0;list-style:none;display:flex;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.path li{flex:1;position:relative;padding:22px 16px 20px;border-right:1px solid var(--line);min-width:0}
+.path li:last-child{border-right:0}
+.dot{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:16px;background:var(--idlebg);color:var(--idle);margin-bottom:12px;transition:background .3s,color .3s}
+.path h3{margin:0;font-size:15px;font-weight:600}
+.path p{margin:2px 0 0;font:400 12.5px var(--mono);color:var(--mute)}
+li[data-s=ok] .dot{background:var(--okbg);color:var(--ok)}
+li[data-s=warn] .dot{background:var(--warnbg);color:var(--warn)}
+li[data-s=bad] .dot{background:var(--badbg);color:var(--bad)}
+li[data-s=ok]{box-shadow:inset 0 -3px var(--ok)}
+li[data-s=warn]{box-shadow:inset 0 -3px var(--warn)}
+li[data-s=bad]{box-shadow:inset 0 -3px var(--bad)}
+
+section{padding:48px 0;border-top:1px solid var(--line)}
+h2{font-size:28px;letter-spacing:-.025em;margin:0 0 8px;line-height:1.2}
+.sub{color:var(--mute);margin:0 0 28px;max-width:62ch}
+.bench{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:36px;align-items:start}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px}
+.chip{padding:8px 14px;min-height:40px;font-size:14px;font-weight:500;background:var(--surface);border:1px solid var(--line);color:var(--ink);border-radius:999px}
+.chip:hover{border-color:var(--accent)}
+fieldset{border:0;padding:0;margin:0 0 18px}
+legend,label.l{font-weight:600;font-size:14px;margin-bottom:8px;display:block;padding:0}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label{padding:10px 22px;font-size:14px;font-weight:500;cursor:pointer;min-height:44px;display:flex;align-items:center}
+.seg input:checked+label{background:var(--accent);color:var(--accent-ink)}
+.seg input:focus-visible+label{outline:3px solid var(--accent);outline-offset:-3px}
+.nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:6px 0 24px}
+.nums input,select{width:100%;font:500 15px var(--mono);padding:10px 12px;min-height:44px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+.nums span{font:400 12px var(--mono);color:var(--mute)}
+.verdict{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:26px;min-height:300px}
+.verdict .empty{color:var(--mute);padding:60px 10px;text-align:center}
+.badge{display:inline-block;font:500 12.5px var(--mono);padding:4px 10px;border-radius:4px;margin-bottom:12px}
+.b-ok{background:var(--okbg);color:var(--ok)}.b-warn{background:var(--warnbg);color:var(--warn)}.b-bad{background:var(--badbg);color:var(--bad)}
+.verdict h3{font-size:22px;letter-spacing:-.02em;margin:0 0 8px;line-height:1.25}
+.verdict p{margin:0 0 18px;color:var(--mute)}
+.meter{height:6px;background:var(--idlebg);border-radius:3px;margin:6px 0 22px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--accent);transition:width .5s}
+.verdict h4{margin:0 0 10px;font-size:14px}
+.ev{list-style:none;margin:0 0 22px;padding:0;border-left:2px solid var(--line)}
+.ev li{padding:4px 0 10px 16px;position:relative;font-size:14.5px}
+.ev li::before{content:"";position:absolute;left:-6px;top:11px;width:10px;height:10px;border-radius:50%;background:var(--surface);border:2px solid var(--idle)}
+.ev li.ok::before{border-color:var(--ok)}.ev li.warn::before{border-color:var(--warn)}.ev li.bad::before{border-color:var(--bad)}
+.steps{margin:0 0 20px;padding-left:20px}.steps li{margin-bottom:6px}
+.mon{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:36px}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.row select{flex:1;min-width:150px}
+#spark{width:100%;height:120px;background:var(--surface);border:1px solid var(--line);border-radius:10px;display:block}
+.tw{overflow-x:auto;margin-top:6px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line)}
+th{font-weight:600;color:var(--mute);font-size:13px}
+tr:last-child td{border-bottom:0}td.m{font-family:var(--mono);font-size:13px}
+footer{padding:30px 0 40px;border-top:1px solid var(--line);color:var(--mute);font-size:13.5px}
+@media (max-width:820px){
+.bench,.mon{grid-template-columns:1fr;gap:28px}
+.path{flex-direction:column}
+.path li{display:grid;grid-template-columns:46px 1fr;padding:14px 16px;border-right:0;border-bottom:1px solid var(--line);align-items:center}
+.path li:last-child{border-bottom:0}
+.dot{margin:0;grid-row:span 2}
+li[data-s=ok],li[data-s=warn],li[data-s=bad]{box-shadow:inset 4px 0 var(--idle)}
+li[data-s=ok]{box-shadow:inset 4px 0 var(--ok)}li[data-s=warn]{box-shadow:inset 4px 0 var(--warn)}li[data-s=bad]{box-shadow:inset 4px 0 var(--bad)}
+.hero{padding-top:36px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="logo"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><path d="M6 21h5l3-9 4 13 3-8h5" fill="none" stroke="var(--accent-ink)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>NetFix</div>
+</header>
+
+<div class="hero">
+  <h1>Find exactly where your connection breaks.</h1>
+  <p class="lead">NetFix checks each link between your device and the Internet, then explains the fault in plain language: what failed, why we think so, and what to do next.</p>
+  <div class="cta">
+    <button class="btn" id="scanBtn">Run live scan</button>
+    <button class="ghost" onclick="document.getElementById('bench').scrollIntoView({behavior:'smooth'})">Enter test results</button>
+    <span class="note" id="scanNote">Measures latency and loss from this browser.</span>
+  </div>
+  <ol class="path" id="path" aria-label="Connection path from device to DNS"></ol>
+</div>
+
+<section id="bench">
+  <h2>Diagnose from evidence</h2>
+  <p class="sub">Use the results of your own tests, or load a sample scenario. Every verdict lists the evidence behind it.</p>
+  <div class="bench">
+    <form onsubmit="return false">
+      <div class="chips" role="group" aria-label="Sample scenarios">
+        <button type="button" class="chip" data-sc="healthy">Healthy</button>
+        <button type="button" class="chip" data-sc="router">Router unreachable</button>
+        <button type="button" class="chip" data-sc="isp">ISP outage</button>
+        <button type="button" class="chip" data-sc="dns">DNS failure</button>
+        <button type="button" class="chip" data-sc="lossy">Weak Wi-Fi</button>
+      </div>
+      <fieldset><legend>Can the device reach the home router?</legend>
+        <div class="seg"><input type="radio" name="gateway" id="g1" value="yes" checked><label for="g1">Yes</label><input type="radio" name="gateway" id="g0" value="no"><label for="g0">No</label></div></fieldset>
+      <fieldset><legend>Can it reach the public Internet by IP?</legend>
+        <div class="seg"><input type="radio" name="publicip" id="p1" value="yes" checked><label for="p1">Yes</label><input type="radio" name="publicip" id="p0" value="no"><label for="p0">No</label></div></fieldset>
+      <fieldset><legend>Do website names resolve?</legend>
+        <div class="seg"><input type="radio" name="dns" id="d1" value="yes" checked><label for="d1">Yes</label><input type="radio" name="dns" id="d0" value="no"><label for="d0">No</label></div></fieldset>
+      <div class="nums">
+        <div><label class="l" for="loss">Packet loss</label><input id="loss" type="number" min="0" max="100" value="0"><span>percent</span></div>
+        <div><label class="l" for="latency">Latency</label><input id="latency" type="number" min="0" value="25"><span>milliseconds</span></div>
+        <div><label class="l" for="speed">Download</label><input id="speed" type="number" min="0" value="50"><span>Mbps</span></div>
+      </div>
+      <div class="cta"><button type="button" class="btn" id="diagBtn">Diagnose</button><button type="button" class="ghost" id="dlBtn">Download report</button></div>
+    </form>
+    <div class="verdict" id="verdict" aria-live="polite"><div class="empty">No diagnosis yet. Run a live scan or pick a scenario to see the verdict and its evidence.</div></div>
+  </div>
+</section>
+
+<section>
+  <h2>Watch for intermittent faults</h2>
+  <p class="sub">Repeat the live scan on a schedule. Dropouts that a single test misses show up as gaps in the trace.</p>
+  <div class="mon">
+    <div>
+      <label class="l" for="interval">Scan frequency</label>
+      <select id="interval"><option value="60000">Every 1 minute</option><option value="300000">Every 5 minutes</option><option value="600000">Every 10 minutes</option></select>
+      <div class="row"><button class="btn" id="startBtn">Start monitoring</button><button class="ghost" id="stopBtn">Stop</button></div>
+      <p class="note" id="autoStatus" style="margin-top:14px">Monitoring is stopped.</p>
+    </div>
+    <div><svg id="spark" viewBox="0 0 600 120" preserveAspectRatio="none" role="img" aria-label="Latency trace of recent scans"></svg>
+      <p class="note" style="margin:8px 0 0">Latency of recent scans. Red ticks mark scans where every probe failed.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>History</h2>
+  <p class="sub">The last ten diagnoses, kept in this browser only.</p>
+  <div class="row" style="margin:0 0 14px"><button class="ghost" id="clearBtn">Clear history</button></div>
+  <div class="tw" id="history"></div>
+</section>
+
+<footer>NetFix · Explainable Home and Last-Mile Connectivity Diagnosis</footer>
+</div>
+
+<script>
+var STAGES=[["device","Your device"],["router","Home router"],["isp","ISP last mile"],["net","Public Internet"],["dns","DNS lookup"]];
+var GLYPH={ok:"✓",warn:"!",bad:"✕",idle:"–"},WORD={ok:"Healthy",warn:"Degraded",bad:"Failing",idle:"Not tested"};
+var SCEN={healthy:["yes","yes","yes",0,22,80],router:["no","no","no",100,0,0],isp:["yes","no","no",100,0,0],dns:["yes","yes","no",0,30,60],lossy:["yes","yes","yes",7,210,3]};
+var latest=null,timer=null,samples=[];
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function radio(n){return document.querySelector('input[name="'+n+'"]:checked').value}
+function setRadio(n,v){var e=document.querySelector('input[name="'+n+'"][value="'+v+'"]');if(e)e.checked=true}
+
+function drawPath(st){
+  $("path").innerHTML=STAGES.map(function(s){var v=(st&&st[s[0]])||"idle";
+    return '<li data-s="'+v+'"><div class="dot" aria-hidden="true">'+GLYPH[v]+'</div><h3>'+s[1]+'</h3><p>'+WORD[v]+'</p></li>'}).join("");
+}
+
+function diagnose(d){
+  var st={device:"ok",router:"ok",isp:"ok",net:"ok",dns:"ok"},ev=[],steps,title,sum,conf,cls;
+  if(typeof navigator.onLine==="boolean"&&!navigator.onLine&&!d.forced){
+    st={device:"bad",router:"idle",isp:"idle",net:"idle",dns:"idle"};
+    return {st:st,cls:"bad",title:"This device is offline",conf:95,sum:"The browser reports no network connection, so nothing beyond the device can be tested.",
+      ev:[["bad","Browser reports the device is offline."]],steps:["Turn on Wi-Fi or plug in the network cable.","Confirm the router is powered on.","Run the scan again."]};
+  }
+  if(d.gateway==="no"){
+    st={device:"ok",router:"bad",isp:"idle",net:"idle",dns:"idle"};cls="bad";conf=92;
+    title="Fault between your device and the router";
+    sum="The device cannot reach the router, so no later link can be judged. The problem is inside the home network.";
+    ev.push(["bad","Router did not respond to the device."],["idle","Internet and DNS were not tested, because they depend on the router."]);
+    steps=["Restart the router and wait two minutes.","Move closer to the router, or switch to an Ethernet cable.","Test with a second device to rule out this one."];
+  }else if(d.publicip==="no"){
+    st={device:"ok",router:"ok",isp:"bad",net:"idle",dns:"idle"};cls="bad";conf=90;
+    title="Likely ISP or last-mile outage";
+    sum="The router answers, but traffic does not leave your home. The break is probably in the modem, the line, or your provider’s network.";
+    ev.push(["ok","Router responded, so the home network is working."],["bad","No reply from public Internet addresses."],["idle","DNS was not tested, because there is no route out."]);
+    steps=["Restart the modem, then the router.","Check your provider’s outage page or app.","If it lasts over 30 minutes, call your provider and quote this report."];
+  }else if(d.dns==="no"){
+    st={device:"ok",router:"ok",isp:"ok",net:"ok",dns:"bad"};cls="warn";conf=88;
+    title="DNS is failing; the connection itself is fine";
+    sum="Internet addresses answer, but website names do not resolve. Pages fail to load even though the link is up.";
+    ev.push(["ok","Router responded."],["ok","Public Internet is reachable by IP address."],["bad","Domain names did not resolve."]);
+    steps=["Restart the router to refresh its DNS settings.","Switch the device or router to a public resolver such as 1.1.1.1 or 8.8.8.8.","Flush the device’s DNS cache."];
+  }else{
+    ev.push(["ok","Router responded."],["ok","Public Internet is reachable."],["ok","Domain names resolve."]);
+    var issues=[];
+    if(d.loss>=2){issues.push("loss");st.isp="warn";ev.push(["warn",d.loss+"% of packets were lost. Above 2% breaks calls and streaming."])}
+    else ev.push(["ok","Packet loss is "+d.loss+"%, within normal range."]);
+    if(d.latency>150){issues.push("lat");st.isp="warn";ev.push(["warn","Latency is "+d.latency+" ms. Normal browsing stays under about 100 ms."])}
+    else ev.push(["ok","Latency is "+d.latency+" ms, within normal range."]);
+    if(d.speed<5){issues.push("spd");st.isp="warn";ev.push(["warn","Download speed is "+d.speed+" Mbps, which limits video and large pages."])}
+    else ev.push(["ok","Download speed is "+d.speed+" Mbps."]);
+    if(issues.length){
+      cls="warn";conf=issues.length>1?80:70;
+      title=issues.indexOf("loss")>-1?"Unstable link: packet loss detected":issues.indexOf("lat")>-1?"Slow link: high latency":"Low throughput";
+      sum="Every link responds, but quality is poor. This points to a weak wireless signal, congestion, or a stressed last-mile line. These cannot be told apart from one test.";
+      steps=["Run the same test over an Ethernet cable. If it improves, the cause is Wi-Fi.","Pause large downloads and streams, then test again.","If the wired test is also poor, report it to your provider with this report."];
+    }else{
+      cls="ok";conf=85;title="No connectivity fault found";
+      sum="Every link responds and quality is within normal limits. If an app still misbehaves, the cause is likely in the app or the remote service.";
+      steps=["Retry the affected app or site.","Start monitoring to catch faults that come and go.","Restart the device if the problem returns."];
+    }
+  }
+  return {st:st,cls:cls,title:title,conf:conf,sum:sum,ev:ev,steps:steps};
+}
+
+function render(r){
+  drawPath(r.st);
+  var lab={ok:"All clear",warn:"Needs attention",bad:"Fault found"}[r.cls];
+  $("verdict").innerHTML='<span class="badge b-'+r.cls+'">'+lab+'</span><h3>'+esc(r.title)+'</h3><p>'+esc(r.sum)+'</p>'+
+    '<h4>Confidence: '+r.conf+'%</h4><div class="meter"><i style="width:'+r.conf+'%"></i></div>'+
+    '<h4>Why we think so</h4><ul class="ev">'+r.ev.map(function(e){return '<li class="'+e[0]+'">'+esc(e[1])+'</li>'}).join("")+'</ul>'+
+    '<h4>What to do next</h4><ol class="steps">'+r.steps.map(function(s){return '<li>'+esc(s)+'</li>'}).join("")+'</ol>';
+}
+
+function readForm(){return {gateway:radio("gateway"),publicip:radio("publicip"),dns:radio("dns"),loss:Number($("loss").value)||0,latency:Number($("latency").value)||0,speed:Number($("speed").value)||0}}
+
+function runDiag(forced){
+  var d=readForm();d.forced=forced;var r=diagnose(d);render(r);
+  latest={time:new Date().toLocaleString(),d:d,title:r.title,conf:r.conf,steps:r.steps,ev:r.ev};
+  saveHistory(latest);
+}
+
+function saveHistory(x){
+  var h=[];try{h=JSON.parse(localStorage.getItem("netfix_history")||"[]")}catch(e){}
+  h.push({time:x.time,title:x.title,loss:x.d.loss,latency:x.d.latency,speed:x.d.speed});
+  try{localStorage.setItem("netfix_history",JSON.stringify(h.slice(-30)))}catch(e){}
+  showHistory(h);
+}
+function showHistory(h){
+  if(!h){h=[];try{h=JSON.parse(localStorage.getItem("netfix_history")||"[]")}catch(e){}}
+  if(!h.length){$("history").innerHTML='<p class="note" style="padding:16px;margin:0">No diagnoses yet.</p>';return}
+  $("history").innerHTML='<table><thead><tr><th>Time</th><th>Diagnosis</th><th>Loss</th><th>Latency</th><th>Download</th></tr></thead><tbody>'+
+   h.slice(-10).reverse().map(function(i){return '<tr><td class="m">'+esc(i.time)+'</td><td>'+esc(i.title)+'</td><td class="m">'+esc(i.loss)+'%</td><td class="m">'+esc(i.latency)+' ms</td><td class="m">'+esc(i.speed)+' Mbps</td></tr>'}).join("")+'</tbody></table>';
+}
+
+async function probe(){
+  var ok=0,times=[],n=5;
+  for(var i=0;i<n;i++){
+    var c=new AbortController(),t=setTimeout(function(){c.abort()},4000),s=performance.now();
+    try{await fetch("https://www.gstatic.com/generate_204?n="+Date.now()+i,{mode:"no-cors",cache:"no-store",signal:c.signal});times.push(performance.now()-s);ok++}catch(e){}
+    clearTimeout(t);
+  }
+  var avg=times.length?Math.round(times.reduce(function(a,b){return a+b},0)/times.length):null;
+  return {ok:ok,n:n,avg:avg};
+}
+
+async function liveScan(silent){
+  var note=$("scanNote");note.textContent="Scanning: sending 5 probes…";
+  var p=await probe();
+  samples.push(p.avg);if(samples.length>30)samples.shift();drawSpark();
+  if(p.ok===0){setRadio("publicip","no");$("loss").value=100;$("latency").value=0;$("speed").value=0;
+    note.textContent="All probes failed. If you are viewing a sandboxed preview, outbound tests may be blocked; open the file locally to test for real."}
+  else{setRadio("publicip","yes");$("loss").value=Math.round((p.n-p.ok)/p.n*100);$("latency").value=p.avg;
+    note.textContent="Scan done: "+p.ok+" of "+p.n+" probes answered, average "+p.avg+" ms. Router and DNS checks cannot run from a browser, so they stay as entered."}
+  runDiag(true);
+}
+
+function drawSpark(){
+  var W=600,H=120,vals=samples.filter(function(v){return v!==null}),max=Math.max(200,Math.max.apply(null,vals.concat([0]))*1.2),step=W/Math.max(samples.length-1,1),pts=[],ticks="";
+  samples.forEach(function(v,i){var x=samples.length===1?W/2:i*step;
+    if(v===null)ticks+='<line x1="'+x+'" x2="'+x+'" y1="6" y2="'+(H-6)+'" stroke="var(--bad)" stroke-width="3"/>';
+    else pts.push(x.toFixed(1)+","+(H-8-(v/max)*(H-24)).toFixed(1))});
+  $("spark").innerHTML=ticks+(pts.length>1?'<polyline points="'+pts.join(" ")+'" fill="none" stroke="var(--accent)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>':"")+
+    (pts.length===1?'<circle cx="'+pts[0].split(",")[0]+'" cy="'+pts[0].split(",")[1]+'" r="4" fill="var(--accent)"/>':"");
+}
+
+function startAuto(){stopAuto(true);var ms=Number($("interval").value);timer=setInterval(function(){liveScan(true)},ms);
+  $("autoStatus").textContent="Monitoring is running. A scan runs every "+(ms/60000)+" min while this page stays open.";liveScan(true)}
+function stopAuto(q){if(timer){clearInterval(timer);timer=null}if(!q)$("autoStatus").textContent="Monitoring is stopped."}
+
+function download(){
+  if(!latest){alert("Run a diagnosis first.");return}
+  var d=latest.d,L=["NETFIX CONNECTIVITY REPORT","","Time: "+latest.time,"Router reachable: "+d.gateway,"Public Internet reachable: "+d.publicip,"DNS resolving: "+d.dns,
+   "Packet loss: "+d.loss+"%","Latency: "+d.latency+" ms","Download: "+d.speed+" Mbps","","Diagnosis: "+latest.title,"Confidence: "+latest.conf+"%","","Evidence:"]
+   .concat(latest.ev.map(function(e){return "- "+e[1]}),["","Next steps:"],latest.steps.map(function(s,i){return (i+1)+". "+s}));
+  var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([L.join("\n")],{type:"text/plain"}));a.download="NetFix_Report.txt";a.click();
+}
+
+document.querySelectorAll("[data-sc]").forEach(function(b){b.addEventListener("click",function(){
+  var s=SCEN[b.dataset.sc];setRadio("gateway",s[0]);setRadio("publicip",s[1]);setRadio("dns",s[2]);$("loss").value=s[3];$("latency").value=s[4];$("speed").value=s[5];runDiag(true)})});
+$("scanBtn").onclick=function(){liveScan()};
+$("diagBtn").onclick=function(){runDiag(true)};
+$("dlBtn").onclick=download;
+$("startBtn").onclick=startAuto;$("stopBtn").onclick=function(){stopAuto()};
+$("clearBtn").onclick=function(){try{localStorage.removeItem("netfix_history")}catch(e){}showHistory([])};
+drawPath(null);drawSpark();showHistory();
+</script>
+</body>
+</html>
